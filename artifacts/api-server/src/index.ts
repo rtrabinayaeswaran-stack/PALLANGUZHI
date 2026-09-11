@@ -1,25 +1,31 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 
-const rawPort = process.env["PORT"];
+const requestedPort = Number(process.env["PORT"] ?? "3000");
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+if (Number.isNaN(requestedPort) || requestedPort <= 0) {
+  throw new Error(`Invalid PORT value: "${process.env["PORT"] ?? "3000"}"`);
 }
 
-const port = Number(rawPort);
+function listenOnPort(port: number): void {
+  const server = app.listen(port, () => {
+    logger.info({ port }, "Server listening");
+  });
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE" && port === requestedPort) {
+      const fallbackPort = port + 1;
+      logger.warn(
+        { requestedPort: port, fallbackPort },
+        "Port already in use, retrying on fallback port",
+      );
+      listenOnPort(fallbackPort);
+      return;
+    }
 
-app.listen(port, (err) => {
-  if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
-  }
+  });
+}
 
-  logger.info({ port }, "Server listening");
-});
+listenOnPort(requestedPort);
